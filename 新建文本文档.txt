@@ -1,0 +1,191 @@
+model tower
+  constant Integer KK=3 "组分数量";
+  constant Integer N=10 "塔板数量";
+  constant Integer X=5 "进料塔板编号";
+  
+  Real F(unit="kg/s") "进料流量";
+  parameter Real q=0.5 "进料液化率";
+  Real fin[KK] "进料各组分质量分数";
+  parameter Real Tin(unit="C") "进料温度";
+  parameter Real Pin(unit="kPa") "进料压力";
+  
+  parameter Real A[KK]={6.03055,1211.033,220.79} "各组分安托因常数A";
+  parameter Real B[KK]={6.07954,1344.8,219.482}"各组分安托因常数B";
+  parameter Real C[KK]={6.12,1463.46,214.7} "各组分安托因常数C";
+  
+  Real Psat[KK,N](each unit="kPa") "每层塔板各组分饱和蒸气压";
+  Real K[KK,N] "相平衡常数";
+  
+  Real T[N](each unit="C") "每层塔板温度";
+  Real P[N](each unit="kPa") "每层塔板压力";
+  
+  Real V(unit="kg/s") "精馏段气体流量";
+  Real V1(unit="kg/s") "提馏段气体流量";
+  Real L(unit="kg/s") "精馏段液体流量";
+  Real L1(unit="kg/s") "提馏段液体流量";
+  
+  parameter Real M(unit="kg")=2 "塔板上的液体质量";
+  Real x[KK,N] "塔板上液体组分的质量分数";
+  Real y[KK,N] "塔板上气体组分的质量分数";
+  
+  Real Lin(unit="kg/s") "塔顶进料液体流量";
+  Real Vout(unit="kg/s") "塔顶出料气体流量";
+  Real xin[KK] "塔顶进料液体各组分质量分数";
+  Real yout[KK] "塔顶出料气体各组分质量分数";
+  Real Lout(unit="kg/s") "塔底出料液体流量";
+  Real Vin(unit="kg/s") "塔底进料气体流量";
+  Real xout[KK] "塔底出料液体各组分质量分数";
+  Real yin[KK] "塔底进料气体各组分质量分数";
+con_TF intower annotation(
+    Placement(transformation(origin = {-100, -2}, extent = {{-10, -10}, {10, 10}}), iconTransformation(origin = {-100, -2}, extent = {{-10, -10}, {10, 10}})));
+con1 out_top annotation(
+    Placement(transformation(origin = {0, 94}, extent = {{-10, -10}, {10, 10}}), iconTransformation(origin = {0, 94}, extent = {{-10, -10}, {10, 10}})));
+con_TF out_bot annotation(
+    Placement(transformation(origin = {0, -98}, extent = {{-10, -10}, {10, 10}}), iconTransformation(origin = {0, -98}, extent = {{-10, -10}, {10, 10}})));
+con_TF back_top annotation(
+    Placement(transformation(origin = {98, 50}, extent = {{-10, -10}, {10, 10}}), iconTransformation(origin = {98, 50}, extent = {{-10, -10}, {10, 10}})));
+con_TF back_bot annotation(
+    Placement(transformation(origin = {98, -52}, extent = {{-10, -10}, {10, 10}}), iconTransformation(origin = {98, -52}, extent = {{-10, -10}, {10, 10}})));
+equation
+  
+  ////////////////////温度
+  T[X]=Tin;
+  for i in 1:X-1 loop
+    T[i]=T[i+1]+1;
+  end for;
+  for i in X+1:N loop
+    T[i]=T[i-1]-1;
+  end for;
+  
+  ////////////////////压力
+//  P[X]=Pin;
+//  for i in 1:X-1 loop
+//    P[i]=P[i+1]-1;
+//  end for;
+//  for i in X+1:N loop
+//    P[i]=P[i-1]+1;
+//  end for;
+  
+  ////////////////////安托因方程
+  for i in 1:KK loop
+    for j in 1:N loop
+      log(Psat[i,j])=A[i]-B[i]/(T[j]+C[i]);
+    end for;
+  end for;
+
+  ////////////////////相平衡
+  for i in 1:KK loop
+    for j in 1:N loop
+      K[i,j]=Psat[i,j]/P[j];
+    end for;
+  end for;
+  for i in 1:KK loop
+    for j in 1:N loop
+      y[i,j]=K[i,j]*x[i,j];
+    end for;
+  end for;
+
+  ////////////////////物料平衡
+  //塔顶塔板
+  for i in 1:KK-1 loop
+    M*der(x[i,1])=Lin*xin[i]-L*x[i,1]+V*y[i,2]-Vout*yout[i];
+  end for;
+  for i in 1:KK loop
+    yout[i]=y[i,1];
+  end for;
+  //塔底塔板
+  for i in 1:KK-1 loop
+    M*der(x[i,N])=L*x[i,N-1]-Lout*xout[i]+Vin*yin[i]-V*y[i,N];
+  end for;
+  for i in 1:KK loop
+    xout[i]=x[i,N];
+  end for;
+  //进料塔板
+  for i in 1:KK-1 loop
+    M*der(x[i,X])=L*x[i,X-1]-L1*x[i,X]+V1*y[i,X+1]-V*y[i,X]+F*fin[i];
+  end for;
+  //气相负荷+液相负荷
+  V=V1+(1-q)*F;
+  L1=L+q*F;
+  Lin=L;
+  Vin=V1;
+  //精馏段塔板
+  for i in 1:KK-1 loop
+    for j in 2:(X-1) loop
+      M*der(x[i,j])=L*x[i,j-1]-L*x[i,j]+V*y[i,j+1]-V*y[i,j];
+    end for;
+  end for;
+  //提馏段塔板
+  for i in 1:KK-1 loop
+    for j in X+1:(N-1) loop
+      M*der(x[i,j])=L1*x[i,j-1]-L1*x[i,j]+V1*y[i,j+1]-V1*y[i,j];
+    end for;
+  end for;
+  
+  ////////////////////归一化
+  for j in 1:N loop
+    sum(x[:,j])=1;
+    sum(y[:,j])=1;
+  end for;
+  
+  ////////////////////接口
+  //原料进料
+  F=intower.F;
+  fin[1]=intower.x1;
+  fin[2]=intower.x2;
+  fin[3]=intower.x3;
+  Tin=intower.T;
+  Pin=intower.P;
+  //塔顶出料
+  out_top.T=T[1];
+  out_top.P=P[1];
+  out_top.F=Vout;
+  out_top.x1=y[1,1];
+  out_top.x2=y[2,1];
+  out_top.x3=y[3,1];
+  ///塔顶回流
+  back_top.T=0;
+  back_top.P=0;
+  Lin=back_top.F;
+  xin[1]=back_top.x1;
+  xin[2]=back_top.x2;
+  xin[3]=back_top.x3;
+  ///塔底出料
+  out_bot.T=T[N];
+  out_bot.P=P[N];
+  out_bot.F=Lout;
+  out_bot.x1=xout[1];
+  out_bot.x2=xout[2];
+  out_bot.x3=xout[3];
+  ///塔底回流
+  back_bot.T=0;
+  back_bot.P=0;
+  back_bot.F=Vin;
+  yin[1]=back_bot.x1;
+  yin[2]=back_bot.x2;
+  yin[3]=back_bot.x3;
+  
+  
+  //塔底
+  Lin=1;
+  Lout=1;
+  Vin=1;
+  Vout=1;
+  for i in 1:KK loop
+    xin[i]=1;
+//    xout[i]=1;
+    yin[i]=1;
+//    yout[i]=1;
+  end for;
+  //温度
+//  T[1]=1;
+//  T[N]=N;
+//  //压力
+//  P[1]=1;
+//  P[N]=N;
+
+
+
+  
+  
+end tower;
